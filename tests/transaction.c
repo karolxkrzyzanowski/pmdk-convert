@@ -602,8 +602,8 @@ main(int argc, char *argv[])
 	PMEMobjpool *pop = NULL;
 #ifdef _WIN32
 	if ((pop = pmemobj_openW(wargv[1], NULL)) == NULL) {
-		printf("failed to open pool\n");
-		exit(24);
+			printf("failed to open pool\n");
+			exit(24);
 	}
 #else
 	if ((pop = pmemobj_open(path, NULL)) == NULL) {

@@ -41,14 +41,23 @@ function(prepare_files)
 		file(WRITE ${DIR}/pool${bin_version}a
 			"PMEMPOOLSET
 16M ${DIR}/part${bin_version}a")
-		execute(0 ${CMAKE_CURRENT_BINARY_DIR}/create_${bin_version}
+		if(WIN32)
+			execute(0 ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG}/create_${bin_version}
 				${DIR}/pool${bin_version}a)
-		
+		else()
+			execute(0 ${CMAKE_CURRENT_BINARY_DIR}/create_${bin_version}
+				${DIR}/pool${bin_version}a)
+		endif()
 		file(WRITE ${DIR}/pool${bin_version}c
 			"PMEMPOOLSET
 16M ${DIR}/part${bin_version}c")
-		execute(0 ${CMAKE_CURRENT_BINARY_DIR}/create_${bin_version}
-			${DIR}/pool${bin_version}c)
+		if(WIN32)
+			execute(0 ${CMAKE_CURRENT_BINARY_DIR}/${CONFIG}/create_${bin_version}
+				${DIR}/pool${bin_version}c)
+		else()
+			execute(0 ${CMAKE_CURRENT_BINARY_DIR}/create_${bin_version}
+				${DIR}/pool${bin_version}c)
+		endif()
 	endforeach()
 
 endfunction()

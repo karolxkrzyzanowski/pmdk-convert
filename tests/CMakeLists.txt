@@ -40,10 +40,13 @@ set(DEVICE_DAX_PATHS "" CACHE STRING
 	"for tests that require raw dax devices without a file system. Some tests might require two DAX devices.
 	Example: '/dev/dax1.0 /dev/dax2.0'")
 
+set(CDB_PATH "" CACHE PATH "requied for windows tests with cdb debugger")
+
 set(GLOBAL_TEST_ARGS
 	-DPARENT_DIR=${TEST_DIR}/
 	-DTESTS_USE_FORCED_PMEM=${TESTS_USE_FORCED_PMEM}
-	-DDEVICE_DAX_PATHS=${DEVICE_DAX_PATHS})
+	-DDEVICE_DAX_PATHS=${DEVICE_DAX_PATHS}
+	-DCDB_PATH=${CDB_PATH})
 
 # convert the DEVICE_DAX_PATHS list to the array
 if(DEVICE_DAX_PATHS)
@@ -72,6 +75,18 @@ function(test name file)
 		ENVIRONMENT "LC_ALL=C;PATH=$ENV{PATH}")
 endfunction()
 
+#Finding cdb executable debugger file and setting path to it 
+function(set_cdb_executable) 
+	if(EXISTS ${CDB_PATH})
+		find_program(CDB_EXE cdb.exe ${CDB_PATH})
+		if(NOT CDB_EXE)
+			message(WARNING "CDB Debugger not found!")
+		endif()
+	else()
+		unset(CDB_EXE)
+	endif()	
+	
+endfunction()
 if(WIN32)
 	set(OPEN_SOURCE openW.c)
 	set(CREATE_SOURCE createW.c)
@@ -500,7 +515,6 @@ if(NOT WIN32)
 	endif()
 
 	if(BUILD_CONVERT_V4)
-
 		add_executable(transaction_13 transaction.c)
 		disable_optimization(transaction_13)
 		target_include_directories(transaction_13 PRIVATE ${CMAKE_SOURCE_DIR}/nvml-1.3/src/include)
@@ -529,17 +543,16 @@ endif()
 
 test("cli_test" cli)
 
-if(NOT WIN32)
-	add_executable(clean_pool clean.c)
-	target_include_directories(clean_pool PRIVATE ${LIBPMEMPOOL_INCLUDE_DIRS})
-	target_link_libraries(clean_pool PRIVATE ${LIBPMEMPOOL_LIBRARIES})
+add_executable(clean_pool clean.c)
+target_include_directories(clean_pool PRIVATE ${LIBPMEMPOOL_INCLUDE_DIRS})
+target_link_libraries(clean_pool PRIVATE ${LIBPMEMPOOL_LIBRARIES})
+file(WRITE ${TEST_DIR}/../tx_intr.lock "")
 
+if(NOT WIN32)
 	if(DEVICE_DAX_PATHS)
 		file(WRITE ${TEST_DIR}/../devdax.lock "")
 	endif()
-
-	file(WRITE ${TEST_DIR}/../tx_intr.lock "")
-
+	
 	test("tx_intr_pool_regfile" tx_intr_pool_regfile)
 	test("tx_intr_poolset_local_2regfiles" tx_intr_poolset_local_2regfiles)
 	test("tx_intr_poolset_local_regfile" tx_intr_poolset_local_regfile)
@@ -578,16 +591,25 @@ if(NOT WIN32)
 			tx_intr_poolset_local_2regfiles_rep_2devdaxes)
 	endif()
 else()
-	add_executable(clean_pool clean.c)
-	target_include_directories(clean_pool PRIVATE ${LIBPMEMPOOL_INCLUDE_DIRS})
-	target_link_libraries(clean_pool PRIVATE ${LIBPMEMPOOL_LIBRARIES})
-
-	file(WRITE ${TEST_DIR}/../tx_intr.lock "")
-
-	test("tx_intr_pool_regfile_win" $<$<CONFIG:DEBUG>:tx_intr_pool_regfile_win>$<$<CONFIG:RELEASE>:skip_test>)
-	test("tx_intr_poolset_local_2regfiles_win" $<$<CONFIG:DEBUG>:tx_intr_poolset_local_2regfiles_win>$<$<CONFIG:RELEASE>:skip_test>)
-	test("tx_intr_poolset_local_regfile_win" $<$<CONFIG:DEBUG>:tx_intr_poolset_local_regfile_win>$<$<CONFIG:RELEASE>:skip_test>)
-	test("tx_intr_poolset_local_regfile_rep_regfile_win" $<$<CONFIG:DEBUG>:tx_intr_poolset_local_regfile_rep_regfile_win>$<$<CONFIG:RELEASE>:skip_test>)
-	
-
+		if(CMAKE_BUILD_TYPE MATCHES Debug)
+			set_cdb_executable()
+			if(CDB_EXE)
+				test("tx_intr_pool_regfile" tx_intr_pool_regfile)
+				test("tx_intr_poolset_local_2regfiles" tx_intr_poolset_local_2regfiles)
+				test("tx_intr_poolset_local_regfile" tx_intr_poolset_local_regfile)
+				test("tx_intr_poolset_local_regfile_rep_regfile" tx_intr_poolset_local_regfile_rep_regfile)
+			else()
+				test("tx_intr_pool_regfile_SKIP_BECAUSE_OF_NO_CDB_DEBUGGER" skip_test)
+				test("tx_intr_poolset_local_2regfiles_SKIP_BECAUSE_OF_NO_CDB_DEBUGGER" skip_test)
+				test("tx_intr_poolset_local_regfile_SKIP_BECAUSE_OF_NO_CDB_DEBUGGER" skip_test)
+				test("tx_intr_poolset_local_regfile_rep_regfile_SKIP_BECAUSE_OF_NO_CDB_DEBUGGER" skip_test)
+			endif()	
+		endif()
+		
+		if(CMAKE_BUILD_TYPE MATCHES Release)
+			test("tx_intr_pool_regfile_SKIP_BECAUSE_OF_RELEASE_BUILD_TYPE" skip_test)
+			test("tx_intr_poolset_local_2regfiles_SKIP_BECAUSE_OF_RELEASE_BUILD_TYPE" skip_test)
+			test("tx_intr_poolset_local_regfile_SKIP_BECAUSE_OF_RELEASE_BUILD_TYPE" skip_test)
+			test("tx_intr_poolset_local_regfile_rep_regfile_SKIP_BECAUSE_OF_RELEASE_BUILD_TYPE" skip_test)
+		endif()
 endif()
