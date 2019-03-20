@@ -35,19 +35,14 @@ set(DIR ${PARENT_DIR}/😘⠝⠧⠍⠇ɗPMDKӜ⥺🙋${TEST_NAME})
 # convert the version list to the array
 string(REPLACE " " ";" VERSIONS ${VERSIONS})
 
- if (WIN32)
-		set(EXE_DIR ${CMAKE_CURRENT_BINARY_DIR}/../${CONFIG})
-		set(TEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/../tests/${CONFIG})
+if(WIN32)
+	set(EXE_DIR ${CMAKE_CURRENT_BINARY_DIR}/../${CONFIG})
+	set(TEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/../tests/${CONFIG})
 else()
 	set(EXE_DIR ${CMAKE_CURRENT_BINARY_DIR}/../)
 	set(TEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/../tests/)
- endif()
+endif()
 
- if(WIN32)
-	if(CDB_PATH)
-		find_program(CDB_EXE cdb.exe PATH CDB_PATH)
-	endif()
- endif()
 # tries to open the ${pool} with all PMDK ${VERSIONS}
 # expect a success when a pmdk version is on the ${correct} list
 function(check_open pool correct)
@@ -124,25 +119,21 @@ function(execute expectation name)
 endfunction()
 
 
-function(execute_cdb MODE SRC_VERSION SCENARIO)
+function(execute_cdb SRC_VERSION SCENARIO)
 	set(CDB_PRE_COMMIT_COMMAND "bm pmemobj_${SRC_VERSION}!tx_pre_commit \".if ( poi (transaction_${SRC_VERSION}!trap) == 1 ) {} .else {gc}\"\;g\;q")
 	set(CDB_POST_COMMIT_COMMAND "bm pmemobj_${SRC_VERSION}!tx_post_commit \".if ( poi (transaction_${SRC_VERSION}!trap) == 1 ) {} .else {gc}\"\;g\;q")
 	
 	if(TESTS_USE_FORCED_PMEM)
 		set(ENV{PMEM_IS_PMEM_FORCE} 1)
 	endif()
-	
-	if(MODE EQUAL 0)
-		execute_process(COMMAND ${CDB_EXE} -c ${CDB_PRE_COMMIT_COMMAND}
+	execute_process(COMMAND ${CDB_PATH}/cdb.exe -c ${CDB_PRE_COMMIT_COMMAND}
 			${CMAKE_CURRENT_BINARY_DIR}/transactionW/${CONFIG}/transaction_${SRC_VERSION}
 			${DIR}/pool${SRC_VERSION}a c ${SCENARIO}
 			RESULT_VARIABLE CDB_RET)
-	elseif(MODE EQUAL 1)
-		execute_process(COMMAND ${CDB_EXE} -c ${CDB_POST_COMMIT_COMMAND}
+	execute_process(COMMAND ${CDB_PATH}/cdb.exe -c ${CDB_POST_COMMIT_COMMAND}
 			${CMAKE_CURRENT_BINARY_DIR}/transactionW/${CONFIG}/transaction_${SRC_VERSION}
 			${DIR}/pool${SRC_VERSION}c c ${SCENARIO}
 			RESULT_VARIABLE CDB_RET)
-	endif()
 	
 	if(TESTS_USE_FORCED_PMEM)
 		unset(ENV{PMEM_IS_PMEM_FORCE})
@@ -176,69 +167,15 @@ function(test_intr_tx prepare_files)
 			endif()
 
 			lock_tx_intr()
-
-			execute(0 gdb --batch
-				--command=${SRC_DIR}/trip_on_pre_commit.gdb
-				--args ${CMAKE_CURRENT_BINARY_DIR}/transaction_${curr_bin_version}
-				${DIR}/pool${curr_bin_version}a c ${curr_scenario})
-			execute(0 ${CMAKE_CURRENT_BINARY_DIR}/../pmdk-convert
-				--to=${next_version} ${DIR}/pool${curr_bin_version}a
-				-X fail-safety ${mutex})
-			execute(0
-				${CMAKE_CURRENT_BINARY_DIR}/transaction_${next_bin_version}
-				${DIR}/pool${curr_bin_version}a va ${curr_scenario})
-
-			execute(0 gdb --batch
-				--command=${SRC_DIR}/trip_on_post_commit.gdb
-				--args ${CMAKE_CURRENT_BINARY_DIR}/transaction_${curr_bin_version}
-				${DIR}/pool${curr_bin_version}c c ${curr_scenario})
-			execute(0 ${CMAKE_CURRENT_BINARY_DIR}/../pmdk-convert
-				--to=${next_version} ${DIR}/pool${curr_bin_version}c
-				-X fail-safety ${mutex})
-			execute(0
-				${CMAKE_CURRENT_BINARY_DIR}/transaction_${next_bin_version}
-				${DIR}/pool${curr_bin_version}c vc ${curr_scenario})
-
-			unlock_tx_intr()
-
-			MATH(EXPR index "${index} + 1")
-		endwhile()
-
-		MATH(EXPR curr_scenario "${curr_scenario} + 1")
-	endwhile()
-endfunction()
-
-function(test_intr_tx_win prepare_files)
-	set(curr_scenario 0)
-	set(last_scenario 9)
-	list(LENGTH VERSIONS num)
-	math(EXPR num "${num} - 1")
-
-	while(NOT curr_scenario GREATER last_scenario)
-		prepare_files()
-		set(index 1)
-		while(index LESS num)
-			list(GET VERSIONS ${index} curr_version)
-
-			math(EXPR next "${index} + 1")
-			list(GET VERSIONS ${next} next_version)
-
-			string(REPLACE "." "" curr_bin_version ${curr_version})
-			string(REPLACE "." "" next_bin_version ${next_version})
 			
-			set_cdb_executable()
-			
-			lock_tx_intr()
-			if(EXISTS ${CDB_EXE})
-				execute_cdb(0 ${curr_bin_version} ${curr_scenario})
+			if(WIN32)
+				execute_cdb(${curr_bin_version} ${curr_scenario})
 				execute(0 ${CMAKE_CURRENT_BINARY_DIR}/../${CONFIG}/pmdk-convert
 					${DIR}/pool${curr_bin_version}a
 					-X fail-safety)
 				execute(0
 					${CMAKE_CURRENT_BINARY_DIR}/transactionW/${CONFIG}/transaction_${next_bin_version}
 					${DIR}/pool${curr_bin_version}a va ${curr_scenario})
-			
-				execute_cdb(1 ${curr_bin_version} ${curr_scenario})
 				execute(0 ${CMAKE_CURRENT_BINARY_DIR}/../${CONFIG}/pmdk-convert
 					${DIR}/pool${curr_bin_version}c
 					-X fail-safety)
@@ -246,8 +183,29 @@ function(test_intr_tx_win prepare_files)
 					${CMAKE_CURRENT_BINARY_DIR}/transactionW/${CONFIG}/transaction_${next_bin_version}
 					${DIR}/pool${curr_bin_version}c vc ${curr_scenario})
 			else()
-				message(WARNING "No cdb path file was chosen. Scenario nr ${curr_scenario} will be skipped")
+				execute(0 gdb --batch
+					--command=${SRC_DIR}/trip_on_pre_commit.gdb
+					--args ${CMAKE_CURRENT_BINARY_DIR}/transaction_${curr_bin_version}
+					${DIR}/pool${curr_bin_version}a c ${curr_scenario})
+				execute(0 ${CMAKE_CURRENT_BINARY_DIR}/../pmdk-convert
+					--to=${next_version} ${DIR}/pool${curr_bin_version}a
+					-X fail-safety ${mutex})
+				execute(0
+					${CMAKE_CURRENT_BINARY_DIR}/transaction_${next_bin_version}
+					${DIR}/pool${curr_bin_version}a va ${curr_scenario})
+		
+				execute(0 gdb --batch
+					--command=${SRC_DIR}/trip_on_post_commit.gdb
+					--args ${CMAKE_CURRENT_BINARY_DIR}/transaction_${curr_bin_version}
+					${DIR}/pool${curr_bin_version}c c ${curr_scenario})
+				execute(0 ${CMAKE_CURRENT_BINARY_DIR}/../pmdk-convert
+					--to=${next_version} ${DIR}/pool${curr_bin_version}c
+					-X fail-safety ${mutex})
+				execute(0
+					${CMAKE_CURRENT_BINARY_DIR}/transaction_${next_bin_version}
+					${DIR}/pool${curr_bin_version}c vc ${curr_scenario})
 			endif()
+			
 			unlock_tx_intr()
 
 			MATH(EXPR index "${index} + 1")
